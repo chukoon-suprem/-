@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>계산기</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #1c1c1e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    .calculator {
+      width: 320px;
+      padding: 20px;
+    }
+
+    .display {
+      padding: 10px 4px 20px;
+      text-align: right;
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+
+    .expression {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 18px;
+      min-height: 28px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: 4px;
+    }
+
+    .result {
+      color: #ffffff;
+      font-size: 64px;
+      font-weight: 300;
+      line-height: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      transition: font-size 0.1s;
+    }
+
+    .result.small {
+      font-size: 40px;
+    }
+
+    .result.xsmall {
+      font-size: 28px;
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    button {
+      border: none;
+      cursor: pointer;
+      font-size: 22px;
+      font-weight: 400;
+      height: 68px;
+      width: 68px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.1s, filter 0.1s;
+      -webkit-tap-highlight-color: transparent;
+      outline: none;
+    }
+
+    button:active {
+      opacity: 0.7;
+    }
+
+    button.wide {
+      width: 100%;
+      border-radius: 34px;
+      grid-column: span 2;
+      justify-content: flex-start;
+      padding-left: 26px;
+    }
+
+    /* Utility buttons: AC, +/-, % */
+    button.utility {
+      background: #636366;
+      color: #ffffff;
+    }
+
+    button.utility:hover {
+      filter: brightness(1.2);
+    }
+
+    /* Operator buttons: ÷, ×, −, +, = */
+    button.operator {
+      background: #ff9f0a;
+      color: #ffffff;
+      font-size: 28px;
+    }
+
+    button.operator:hover {
+      filter: brightness(1.15);
+    }
+
+    button.operator.active {
+      background: #ffffff;
+      color: #ff9f0a;
+    }
+
+    /* Number buttons */
+    button.number {
+      background: #333333;
+      color: #ffffff;
+    }
+
+    button.number:hover {
+      filter: brightness(1.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="calculator">
+    <div class="display">
+      <div class="expression" id="expression"></div>
+      <div class="result" id="result">0</div>
+    </div>
+    <div class="buttons" id="buttons">
+      <button class="utility" data-action="clear">AC</button>
+      <button class="utility" data-action="sign">+/−</button>
+      <button class="utility" data-action="percent">%</button>
+      <button class="operator" data-action="operator" data-value="/">÷</button>
+
+      <button class="number" data-action="number" data-value="7">7</button>
+      <button class="number" data-action="number" data-value="8">8</button>
+      <button class="number" data-action="number" data-value="9">9</button>
+      <button class="operator" data-action="operator" data-value="*">×</button>
+
+      <button class="number" data-action="number" data-value="4">4</button>
+      <button class="number" data-action="number" data-value="5">5</button>
+      <button class="number" data-action="number" data-value="6">6</button>
+      <button class="operator" data-action="operator" data-value="-">−</button>
+
+      <button class="number" data-action="number" data-value="1">1</button>
+      <button class="number" data-action="number" data-value="2">2</button>
+      <button class="number" data-action="number" data-value="3">3</button>
+      <button class="operator" data-action="operator" data-value="+">+</button>
+
+      <button class="number wide" data-action="number" data-value="0">0</button>
+      <button class="number" data-action="decimal">.</button>
+      <button class="operator" data-action="equals">=</button>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      displayValue: '0',
+      firstOperand: null,
+      operator: null,
+      waitingForSecond: false,
+      lastOperand: null,
+      lastOperator: null,
+      isError: false,
+      justEqualed: false
+    };
+
+    const resultEl = document.getElementById('result');
+    const expressionEl = document.getElementById('expression');
+    const buttonsEl = document.getElementById('buttons');
+    const clearBtn = document.querySelector('[data-action="clear"]');
+
+    function calculate(a, op, b) {
+      switch (op) {
+        case '+': return a + b;
+        case '-': return a - b;
+        case '*': return a * b;
+        case '/': return b === 0 ? null : a / b;
+      }
+    }
+
+    function formatNumber(val) {
+      if (val === null) return 'Error';
+      const str = String(parseFloat(val.toPrecision(10)));
+      if (str.length > 12) {
+        return parseFloat(val.toPrecision(6)).toExponential();
+      }
+      return str;
+    }
+
+    function updateDisplay() {
+      const text = state.isError ? 'Error' : state.displayValue;
+      resultEl.textContent = text;
+
+      if (text.length > 9) {
+        resultEl.className = 'result xsmall';
+      } else if (text.length > 6) {
+        resultEl.className = 'result small';
+      } else {
+        resultEl.className = 'result';
+      }
+
+      // Update clear button label
+      clearBtn.textContent = (state.displayValue === '0' && state.firstOperand === null) ? 'AC' : 'C';
+
+      // Highlight active operator
+      document.querySelectorAll('button.operator[data-value]').forEach(btn => {
+        btn.classList.toggle('active', !state.waitingForSecond === false && btn.dataset.value === state.operator && state.waitingForSecond);
+      });
+
+      // Update expression line
+      if (state.firstOperand !== null && state.operator) {
+        const opSymbols = { '+': '+', '-': '−', '*': '×', '/': '÷' };
+        expressionEl.textContent = formatNumber(state.firstOperand) + ' ' + (opSymbols[state.operator] || state.operator);
+      } else {
+        expressionEl.textContent = '';
+      }
+    }
+
+    function handleNumber(digit) {
+      if (state.isError) {
+        state.isError = false;
+        state.displayValue = digit;
+        state.firstOperand = null;
+        state.operator = null;
+        state.waitingForSecond = false;
+        updateDisplay();
+        return;
+      }
+
+      if (state.justEqualed) {
+        // Start fresh after equals
+        state.firstOperand = null;
+        state.operator = null;
+        state.justEqualed = false;
+      }
+
+      if (state.waitingForSecond) {
+        state.displayValue = digit === '0' ? '0' : digit;
+        state.waitingForSecond = false;
+      } else {
+        if (state.displayValue === '0' && digit !== '.') {
+          state.displayValue = digit;
+        } else if (state.displayValue.replace('-', '').replace('.', '').length < 9) {
+          state.displayValue += digit;
+        }
+      }
+      updateDisplay();
+    }
+
+    function handleOperator(op) {
+      if (state.isError) return;
+      state.justEqualed = false;
+
+      if (state.firstOperand !== null && !state.waitingForSecond) {
+        // Chain: compute pending operation first
+        const second = parseFloat(state.displayValue);
+        const result = calculate(state.firstOperand, state.operator, second);
+        if (result === null) {
+          state.isError = true;
+          state.firstOperand = null;
+          state.operator = null;
+          state.waitingForSecond = false;
+          updateDisplay();
+          return;
+        }
+        const formatted = formatNumber(result);
+        state.displayValue = formatted;
+        state.firstOperand = parseFloat(formatted);
+      } else {
+        state.firstOperand = parseFloat(state.displayValue);
+      }
+
+      state.operator = op;
+      state.waitingForSecond = true;
+      updateDisplay();
+    }
+
+    function handleEquals() {
+      if (state.isError) return;
+
+      let op, second;
+
+      if (state.justEqualed) {
+        // Repeat last operation
+        op = state.lastOperator;
+        second = state.lastOperand;
+      } else {
+        if (state.firstOperand === null || state.operator === null) return;
+        op = state.operator;
+        second = parseFloat(state.displayValue);
+        state.lastOperand = second;
+        state.lastOperator = op;
+      }
+
+      const result = calculate(
+        state.justEqualed ? parseFloat(state.displayValue) : state.firstOperand,
+        op,
+        second
+      );
+
+      if (result === null) {
+        state.isError = true;
+        state.firstOperand = null;
+        state.operator = null;
+        state.waitingForSecond = false;
+        state.justEqualed = false;
+        updateDisplay();
+        return;
+      }
+
+      const formatted = formatNumber(result);
+      state.displayValue = formatted;
+      state.firstOperand = null;
+      state.operator = null;
+      state.waitingForSecond = false;
+      state.justEqualed = true;
+      expressionEl.textContent = '';
+      updateDisplay();
+    }
+
+    function handleClear() {
+      if (state.displayValue !== '0' && !state.isError) {
+        // C: clear current entry
+        state.displayValue = '0';
+        state.isError = false;
+        state.waitingForSecond = false;
+      } else {
+        // AC: full reset
+        state.displayValue = '0';
+        state.firstOperand = null;
+        state.operator = null;
+        state.waitingForSecond = false;
+        state.lastOperand = null;
+        state.lastOperator = null;
+        state.isError = false;
+        state.justEqualed = false;
+      }
+      updateDisplay();
+    }
+
+    function handleSign() {
+      if (state.isError) return;
+      if (state.displayValue === '0') return;
+      if (state.displayValue.startsWith('-')) {
+        state.displayValue = state.displayValue.slice(1);
+      } else {
+        state.displayValue = '-' + state.displayValue;
+      }
+      state.justEqualed = false;
+      updateDisplay();
+    }
+
+    function handlePercent() {
+      if (state.isError) return;
+      const val = parseFloat(state.displayValue) / 100;
+      state.displayValue = formatNumber(val);
+      state.justEqualed = false;
+      updateDisplay();
+    }
+
+    function handleDecimal() {
+      if (state.isError) {
+        state.isError = false;
+        state.displayValue = '0.';
+        state.firstOperand = null;
+        state.operator = null;
+        state.waitingForSecond = false;
+        state.justEqualed = false;
+        updateDisplay();
+        return;
+      }
+
+      if (state.justEqualed) {
+        state.firstOperand = null;
+        state.operator = null;
+        state.justEqualed = false;
+      }
+
+      if (state.waitingForSecond) {
+        state.displayValue = '0.';
+        state.waitingForSecond = false;
+        updateDisplay();
+        return;
+      }
+
+      if (!state.displayValue.includes('.')) {
+        state.displayValue += '.';
+        updateDisplay();
+      }
+    }
+
+    function handleBackspace() {
+      if (state.isError || state.waitingForSecond) return;
+      if (state.displayValue.length <= 1 || (state.displayValue.length === 2 && state.displayValue.startsWith('-'))) {
+        state.displayValue = '0';
+      } else {
+        state.displayValue = state.displayValue.slice(0, -1);
+        if (state.displayValue === '-') state.displayValue = '0';
+      }
+      updateDisplay();
+    }
+
+    // Button click delegation
+    buttonsEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+
+      const action = btn.dataset.action;
+      const value = btn.dataset.value;
+
+      switch (action) {
+        case 'number':    handleNumber(value); break;
+        case 'operator':  handleOperator(value); break;
+        case 'equals':    handleEquals(); break;
+        case 'clear':     handleClear(); break;
+        case 'sign':      handleSign(); break;
+        case 'percent':   handlePercent(); break;
+        case 'decimal':   handleDecimal(); break;
+      }
+    });
+
+    // Keyboard support
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key >= '0' && e.key <= '9') {
+        handleNumber(e.key);
+      } else if (e.key === '.') {
+        handleDecimal();
+      } else if (['+', '-', '*', '/'].includes(e.key)) {
+        handleOperator(e.key);
+      } else if (e.key === 'Enter' || e.key === '=') {
+        handleEquals();
+      } else if (e.key === 'Escape') {
+        handleClear();
+      } else if (e.key === 'Backspace') {
+        handleBackspace();
+      } else if (e.key === '%') {
+        handlePercent();
+      }
+    });
+
+    // Initial render
+    updateDisplay();
+  </script>
+</body>
+</html>
